@@ -1,0 +1,8 @@
+own_log = "/var/log/autowebbackup.log"
+do_trace = false
+
+dirs = [
+  "/home/joehil",
+  "/home/jhillebrand"
+]
+
