@@ -2,85 +2,216 @@ package main
 
 import (
 	"log"
-	"io/ioutil"
 	"os"
-	"os/signal"
 	"os/exec"
 	"fmt"
+	"time"
 	"strings"
-	"strconv"
-	"syscall"
-	"hash/fnv"
-	"github.com/illarion/gonotify"
+    	"path"
+    	"path/filepath"
+    	"sync/atomic"
 	"github.com/spf13/viper"
 	"github.com/natefinch/lumberjack"
+	"github.com/secsy/goftp"
+	"crypto/tls"
 )
 
-//var read_log1 string = "/var/log/monit.log"
-//var read_log2 string = "/var/log/virtualmin/remote-browser.eu_error_log"
-var do_trace bool = false
-var msg_trace bool = false
-var pidfile string
+var do_trace bool = true
 var ownlog string
-var logs []string
-var rlogs []*os.File
-var rpos []int64
-var loghash []uint32
-
+var dirs []string
+var ftpsuser string
+var ftpspassword string
+var ftpshost string
+var dailydir string
+var weeklydir string
+var monthlydir string
+var tempdir string
+var dailykeep int64
+var weeklykeep int64
+var monthlykeep int64
 
 func main() {
 // Set location of config 
-	viper.SetConfigName("proc_logs") // name of config file (without extension)
+	viper.SetConfigName("autowebbackup") // name of config file (without extension)
 	viper.AddConfigPath("/etc/")   // path to look for the config file in
 
 // Read config
 	read_config()
 
-// Get commandline args
-	if len(os.Args) > 1 {
-        	a1 := os.Args[1]
-        	if a1 == "reload" {
-			b, err := ioutil.ReadFile(pidfile) 
-    			if err != nil {
-        			log.Fatal(err)
-    			}
-			s := string(b)
-			fmt.Println("Reload", s)
-			cmd := exec.Command("kill", "-hup", s)
-                	_ = cmd.Start()
-                	os.Exit(0)
-        	}
-                if a1 == "mtraceon" {
-                        b, err := ioutil.ReadFile(pidfile)
-                        if err != nil {
-                                log.Fatal(err)
-                        }
-                        s := string(b)
-                        fmt.Println("MsgTraceOn")
-                        cmd := exec.Command("kill", "-10", s)
-                        _ = cmd.Start()
-                        os.Exit(0)
-                }
-                if a1 == "mtraceoff" {
-                        b, err := ioutil.ReadFile(pidfile)
-                        if err != nil {
-                                log.Fatal(err)
-                        }
-                        s := string(b)
-                        fmt.Println("MsgTraceOff")
-                        cmd := exec.Command("kill", "-12", s)
-                        _ = cmd.Start()
-                        os.Exit(0)
-                }
-                if a1 == "run" {
-                        proc_run()
-                }
-		fmt.Println("parameter invalid")
-		os.Exit(-1)
+t := time.Now()
+tstr := t.Format("20060102")
+wd := t.Weekday()
+fstr := tstr[0:6] + "01"
+tunix := t.Unix()
+daynum := t.Day()
+
+config := goftp.Config{
+    User:               ftpsuser,
+    Password:           ftpspassword,
+    ConnectionsPerHost: 10,
+    ActiveTransfers: false,
+    DisableEPSV: true,
+    Timeout:            100 * time.Second,
+    Logger:             os.Stderr,
+    TLSConfig: &tls.Config{
+		InsecureSkipVerify: true,
+		Renegotiation: 2,
+	},
+    TLSMode: 0,
+}
+
+client, err := goftp.DialConfig(config, ftpshost)
+if err != nil {
+    panic(err)
+}
+
+pwd, err := client.Getwd() 
+if err != nil {
+    panic(err)
+}
+fmt.Println(pwd)
+
+    Walk(client, dailydir, func(fullPath string, info os.FileInfo, err error) error {
+        if err != nil {
+            // no permissions is okay, keep walking
+            if err.(goftp.Error).Code() == 550 {
+                return nil
+            }
+            return err
+        }
+
+	fstat, err := client.Stat(fullPath)
+        fmt.Println(fstat.Name(),fstat.ModTime().Unix())
+
+	if fstat.ModTime().Unix() < tunix - 86400 * dailykeep {
+		fmt.Println("Datei löschen")
 	}
-	if len(os.Args) == 1 {
-		myUsage()
+
+        return nil
+    })
+
+    Walk(client, weeklydir, func(fullPath string, info os.FileInfo, err error) error {
+        if err != nil {
+            // no permissions is okay, keep walking
+            if err.(goftp.Error).Code() == 550 {
+                return nil
+            }
+            return err
+        }
+
+        fstat, err := client.Stat(fullPath)
+        fmt.Println(fstat.Name(),fstat.ModTime().Unix())
+
+        if fstat.ModTime().Unix() < tunix - 86400 * weeklykeep {
+                fmt.Println("Datei löschen")
+        }
+
+        return nil
+    })
+
+    Walk(client, monthlydir, func(fullPath string, info os.FileInfo, err error) error {
+        if err != nil {
+            // no permissions is okay, keep walking
+            if err.(goftp.Error).Code() == 550 {
+                return nil
+            }
+            return err
+        }
+
+        fstat, err := client.Stat(fullPath)
+        fmt.Println(fstat.Name(),fstat.ModTime().Unix())
+
+        if fstat.ModTime().Unix() < tunix - 86400 * monthlykeep {
+                fmt.Println("Datei löschen")
+        }
+
+        return nil
+    })
+
+client.Close()
+
+
+// Loop over directories
+	for i, s := range dirs {
+		var cmd *exec.Cmd
+    		fmt.Println(i, s)
+                if daynum == 1 {
+			cmd = exec.Command("/bin/tar", "-czf", tempdir+"/autowebbackup.tar.gz", s)
+		} else {
+                        cmd = exec.Command("/bin/tar", "-cz", "--newer", fstr, "-f", tempdir+"/autowebbackup.tar.gz", s)
+		}
+		log.Printf(s)
+		err := cmd.Run()
+		if err != nil {
+			log.Printf("Command finished with error: %v", err)
+		}
+
+                sparts := strings.SplitAfter(s, "/")
+                spart := sparts[len(sparts)-1]
+
+
+		if daynum == 1 { 
+			client, err := goftp.DialConfig(config, ftpshost)
+			if err != nil {
+ 	                       log.Printf("FTPS connect error: %v", err)
+			} else {
+				log.Println("FTPS connected successfully")
+			}
+			bigFile, err := os.Open(tempdir+"/autowebbackup.tar.gz")
+			if err != nil {
+                        	log.Printf("Open file error: %v", err)
+			}
+			err = client.Store(monthlydir+"/"+spart+"-"+tstr+".tar.gz", bigFile)
+			if err != nil {
+        	                log.Printf("FTPS store error: %v", err)
+			} else {
+                	        log.Println("FTPS stored successfully")
+                	}
+                	client.Close()
+                	bigFile.Close()
+		} else if wd.String() == "Sunday" {
+	                tclient, terr := goftp.DialConfig(config, ftpshost)
+        	        if terr != nil {
+                	        log.Printf("FTPS connect error: %v", terr)
+ 	   	        } else {
+                	        log.Println("FTPS connected successfully")
+           	        }
+	                tbigFile, terr := os.Open(tempdir+"/autowebbackup.tar.gz")
+        	        if terr != nil {
+                	        log.Printf("Open file error: %v", terr)
+                	}
+                	terr = tclient.Store(weeklydir+"/"+spart+"-"+tstr+".tar.gz", tbigFile)
+        	        if terr != nil {
+                	        log.Printf("FTPS store error: %v", terr)
+         	        } else {
+                	        log.Println("FTPS stored successfully")
+			}
+			tclient.Close()
+			tbigFile.Close()
+                } else {
+                        tclient, terr := goftp.DialConfig(config, ftpshost)
+                        if terr != nil {
+                                log.Printf("FTPS connect error: %v", terr)
+                        } else {
+                                log.Println("FTPS connected successfully")
+                        }
+                        tbigFile, terr := os.Open(tempdir+"/autowebbackup.tar.gz")
+                        if terr != nil {
+                                log.Printf("Open file error: %v", terr)
+                        }
+                        terr = tclient.Store(dailydir+"/"+spart+"-"+tstr+".tar.gz", tbigFile)
+                        if terr != nil {
+                                log.Printf("FTPS store error: %v", terr)
+                        } else {
+                                log.Println("FTPS stored successfully")
+                        }
+                        tclient.Close()
+                        tbigFile.Close()
+                }
+
+		os.Remove(tempdir+"/autowebbackup.tar.gz")
 	}
+
 }
 
 func read_config() {
@@ -89,32 +220,86 @@ func read_config() {
                 log.Fatalf("Config file not found: %v", err)
         }
 
-        pidfile = viper.GetString("pid_file")
-        if pidfile =="" { // Handle errors reading the config file
-                log.Fatalf("Filename for pidfile unknown: %v", err)
-        }
         ownlog = viper.GetString("own_log")
         if ownlog =="" { // Handle errors reading the config file
                 log.Fatalf("Filename for ownlog unknown: %v", err)
         }
-	logs = viper.GetStringSlice("logs")
-        do_trace = viper.GetBool("do_trace")
+// Open log file
+        ownlogger := &lumberjack.Logger{
+                Filename:   ownlog,
+                MaxSize:    5, // megabytes
+                MaxBackups: 3,
+                MaxAge:     28, //days
+                Compress:   true, // disabled by default
+        }
+        defer ownlogger.Close()
+        log.SetOutput(ownlogger)
+
+        dirs = viper.GetStringSlice("dirs")
+//        do_trace = viper.GetBool("do_trace")
+	ftpsuser = viper.GetString("ftpsuser")
+        ftpspassword = viper.GetString("ftpspassword")
+        ftpshost = viper.GetString("ftpshost")
+        dailydir = viper.GetString("dailydir")
+        weeklydir = viper.GetString("weeklydir")
+        monthlydir = viper.GetString("monthlydir")
+        tempdir = viper.GetString("tempdir")
+        dailykeep = viper.GetInt64("dailykeep")
+        weeklykeep = viper.GetInt64("weeklykeep")
+        monthlykeep = viper.GetInt64("monthlykeep")
 
 	if do_trace {
 		log.Println("do_trace: ",do_trace)
 		log.Println("own_log; ",ownlog)
-		log.Println("pid_file: ",pidfile)
-		for i, v := range logs {
+		for i, v := range dirs {
 			log.Printf("Index: %d, Value: %v\n", i, v )
 		}
 	}
 }
 
-func myUsage() {
-     fmt.Printf("Usage: %s argument\n", os.Args[0])
-     fmt.Println("Arguments:")
-     fmt.Println("run           Run progam as daemon")
-     fmt.Println("reload        Make running daemon reload it's configuration")
-     fmt.Println("mtraceon      Make running daemon switch it's message tracing on (useful for coding new rules)")
-     fmt.Println("mtraceoff     Make running daemon switch it's message tracing off")
+// Walk a FTP file tree in parallel with prunability and error handling.
+// See http://golang.org/pkg/path/filepath/#Walk for interface details.
+func Walk(client *goftp.Client, root string, walkFn filepath.WalkFunc) (ret error) {
+    dirsToCheck := make(chan string, 100)
+
+    var workCount int32 = 1
+    dirsToCheck <- root
+
+    for dir := range dirsToCheck {
+        go func(dir string) {
+            files, err := client.ReadDir(dir)
+
+            if err != nil {
+                if err = walkFn(dir, nil, err); err != nil && err != filepath.SkipDir {
+                    ret = err
+                    close(dirsToCheck)
+                    return
+                }
+            }
+
+            for _, file := range files {
+                if err = walkFn(path.Join(dir, file.Name()), file, nil); err != nil {
+                    if file.IsDir() && err == filepath.SkipDir {
+                        continue
+                    }
+                    ret = err
+                    close(dirsToCheck)
+                    return
+                }
+
+                if file.IsDir() {
+                    atomic.AddInt32(&workCount, 1)
+                    dirsToCheck <- path.Join(dir, file.Name())
+                }
+            }
+
+            atomic.AddInt32(&workCount, -1)
+            if workCount == 0 {
+                close(dirsToCheck)
+            }
+        }(dir)
+    }
+
+    return ret
 }
+

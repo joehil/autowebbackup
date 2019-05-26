@@ -2,7 +2,20 @@ own_log = "/var/log/autowebbackup.log"
 do_trace = false
 
 dirs = [
-  "/home/joehil",
-  "/home/jhillebrand"
+  "<dir1>",
+  "<dir2>
 ]
+
+dailydir = "Daily"
+weeklydir = "Weekly"
+monthlydir = "Monthly"
+tempdir = "/tmp"
+
+dailykeep = 10
+weeklykeep = 100
+monthlykeep = 400
+
+ftpsuser = "<ftpsuser>"
+ftpspassword = "<ftpspassw>"
+ftpshost = "<ftpshost>"
 
