@@ -7,4 +7,15 @@ At the moment I have an ftp-server that makes use of the ftps protocol to encryp
 
 I created this software to automate the creation of daily, weekly and monthly backups. You can backup as many directories as you like. The software reads it's parameters from the file /etc/autowebbackup.toml.
 
+This software was written in go (golang). To use it on your server, do the following:
 
+- install Go (Golang) on your server
+- copy autowebbackup to a directory of your own choice
+- change to that directory
+- run "go build"
+- now you are supposed to see the new file "autowebbackup"
+- copy the file "autowebbackup.toml" to "/etc/autowebbackup.toml"
+- modify /etc/autowebbackup.toml to your needs
+- run autowebbackup
+
+To use autowebbackup regularly, consider adding it to your crontab. It is best to run autowebbackup daily, best during the night.
