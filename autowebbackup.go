@@ -84,7 +84,8 @@ fmt.Println(pwd)
         fmt.Println(fstat.Name(),fstat.ModTime().Unix())
 
 	if fstat.ModTime().Unix() < tunix - 86400 * dailykeep {
-		fmt.Println("Datei löschen")
+		log.Println("Delete file ",fullPath)
+		client.Delete(fullPath)
 	}
 
         return nil
@@ -103,7 +104,8 @@ fmt.Println(pwd)
         fmt.Println(fstat.Name(),fstat.ModTime().Unix())
 
         if fstat.ModTime().Unix() < tunix - 86400 * weeklykeep {
-                fmt.Println("Datei löschen")
+		log.Println("Delete file ",fullPath)
+		client.Delete(fullPath)
         }
 
         return nil
@@ -122,7 +124,8 @@ fmt.Println(pwd)
         fmt.Println(fstat.Name(),fstat.ModTime().Unix())
 
         if fstat.ModTime().Unix() < tunix - 86400 * monthlykeep {
-                fmt.Println("Datei löschen")
+		log.Println("Delete file ",fullPath)
+		client.Delete(fullPath)
         }
 
         return nil
