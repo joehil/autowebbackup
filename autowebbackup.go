@@ -63,6 +63,10 @@ func main() {
                         list()
 			os.Exit(0)
                 }
+                if a1 == "fetch" {
+                        fetch(os.Args[2])
+			os.Exit(0)
+                }
 		fmt.Println("parameter invalid")
 		os.Exit(-1)
 	}
@@ -463,6 +467,30 @@ if err != nil {
         fmt.Println(fullPath)
         return nil
     })
+
+client.Close()
+}
+
+func fetch(filename string) {
+config := goftp.Config{
+    User:               ftpsuser,
+    Password:           ftpspassword,
+    ConnectionsPerHost: 10,
+    ActiveTransfers: false,
+    DisableEPSV: true,
+    Timeout:            100 * time.Second,
+    Logger:             nil,
+    TLSConfig: &tls.Config{
+		InsecureSkipVerify: true,
+		Renegotiation: 2,
+	},
+    TLSMode: 0,
+}
+
+client, err := goftp.DialConfig(config, ftpshost)
+if err != nil {
+    panic(err)
+}
 
 client.Close()
 }
