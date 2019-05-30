@@ -57,7 +57,12 @@ func main() {
         	a1 := os.Args[1]
         	if a1 == "backup" {
 			backup()
+			os.Exit(0)
         	}
+                if a1 == "list" {
+                        list()
+			os.Exit(0)
+                }
 		fmt.Println("parameter invalid")
 		os.Exit(-1)
 	}
@@ -410,7 +415,7 @@ config := goftp.Config{
     ActiveTransfers: false,
     DisableEPSV: true,
     Timeout:            100 * time.Second,
-    Logger:             os.Stderr,
+    Logger:             nil,
     TLSConfig: &tls.Config{
 		InsecureSkipVerify: true,
 		Renegotiation: 2,
@@ -431,9 +436,7 @@ if err != nil {
             }
             return err
         }
-
-	fstat, err := client.Stat(fullPath)
-        fmt.Println(fstat.Name())
+        fmt.Println(fullPath)
         return nil
     })
 
@@ -445,9 +448,7 @@ if err != nil {
             }
             return err
         }
-
-        fstat, err := client.Stat(fullPath)
-        fmt.Println(fstat.Name())
+        fmt.Println(fullPath)
         return nil
     })
 
@@ -459,9 +460,7 @@ if err != nil {
             }
             return err
         }
-
-        fstat, err := client.Stat(fullPath)
-        fmt.Println(fstat.Name())
+        fmt.Println(fullPath)
         return nil
     })
 
