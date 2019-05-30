@@ -1,6 +1,8 @@
 # autowebbackup
 Automatically backup your web pages in an ftps directory
 
+The backups can optionally be encrypted.
+
 If you have your own webserver, it is your own responsability to create backups of your web pages. I personally like to rent an ftp-server to copy my backups to.
 
 At the moment I have an ftp-server that makes use of the ftps protocol to encrypt it's data streams. The server is a ProFTPd server.
