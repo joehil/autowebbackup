@@ -5,6 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"fmt"
+	"bytes"
+	"io"
+	"io/ioutil"
 	"time"
 	"strings"
     	"path"
@@ -14,21 +17,38 @@ import (
 	"github.com/natefinch/lumberjack"
 	"github.com/secsy/goftp"
 	"crypto/tls"
+	"crypto/aes"
+	"crypto/rand"
+	"crypto/cipher"
 )
 
 var do_trace bool = true
+
 var ownlog string
+
 var dirs []string
+
+var tarcmd string
+
 var ftpsuser string
 var ftpspassword string
 var ftpshost string
+
 var dailydir string
 var weeklydir string
 var monthlydir string
 var tempdir string
+
 var dailykeep int64
 var weeklykeep int64
 var monthlykeep int64
+
+var do_encrypt bool = true
+var encryptsuffix string
+var encryptpassw string
+
+var transferfile string = "/autowebbackup.tar.gz"
+var transfersuffix string = "tar.gz"
 
 func main() {
 // Set location of config 
@@ -64,12 +84,6 @@ client, err := goftp.DialConfig(config, ftpshost)
 if err != nil {
     panic(err)
 }
-
-pwd, err := client.Getwd() 
-if err != nil {
-    panic(err)
-}
-fmt.Println(pwd)
 
     Walk(client, dailydir, func(fullPath string, info os.FileInfo, err error) error {
         if err != nil {
@@ -133,21 +147,28 @@ fmt.Println(pwd)
 
 client.Close()
 
+if do_encrypt {
+	transferfile = "/autowebbackup." + encryptsuffix
+	transfersuffix = encryptsuffix
+}
 
 // Loop over directories
 	for i, s := range dirs {
 		var cmd *exec.Cmd
     		fmt.Println(i, s)
                 if daynum == 1 {
-			cmd = exec.Command("/bin/tar", "-czf", tempdir+"/autowebbackup.tar.gz", s)
+			cmd = exec.Command(tarcmd, "-czf", tempdir+"/autowebbackup.tar.gz", s)
 		} else {
-                        cmd = exec.Command("/bin/tar", "-cz", "--newer", fstr, "-f", tempdir+"/autowebbackup.tar.gz", s)
+                        cmd = exec.Command(tarcmd, "-cz", "--newer", fstr, "-f", tempdir+"/autowebbackup.tar.gz", s)
 		}
 		log.Printf(s)
 		err := cmd.Run()
 		if err != nil {
 			log.Printf("Command finished with error: %v", err)
 		}
+                if do_encrypt {
+                        encrypt()
+                }
 
                 sparts := strings.SplitAfter(s, "/")
                 spart := sparts[len(sparts)-1]
@@ -160,11 +181,11 @@ client.Close()
 			} else {
 				log.Println("FTPS connected successfully")
 			}
-			bigFile, err := os.Open(tempdir+"/autowebbackup.tar.gz")
+			bigFile, err := os.Open(tempdir+transferfile)
 			if err != nil {
                         	log.Printf("Open file error: %v", err)
 			}
-			err = client.Store(monthlydir+"/"+spart+"-"+tstr+".tar.gz", bigFile)
+			err = client.Store(monthlydir+"/"+spart+"-"+tstr+"."+transfersuffix, bigFile)
 			if err != nil {
         	                log.Printf("FTPS store error: %v", err)
 			} else {
@@ -179,11 +200,11 @@ client.Close()
  	   	        } else {
                 	        log.Println("FTPS connected successfully")
            	        }
-	                tbigFile, terr := os.Open(tempdir+"/autowebbackup.tar.gz")
+	                tbigFile, terr := os.Open(tempdir+transferfile)
         	        if terr != nil {
                 	        log.Printf("Open file error: %v", terr)
                 	}
-                	terr = tclient.Store(weeklydir+"/"+spart+"-"+tstr+".tar.gz", tbigFile)
+                	terr = tclient.Store(weeklydir+"/"+spart+"-"+tstr+"."+transfersuffix, tbigFile)
         	        if terr != nil {
                 	        log.Printf("FTPS store error: %v", terr)
          	        } else {
@@ -198,11 +219,11 @@ client.Close()
                         } else {
                                 log.Println("FTPS connected successfully")
                         }
-                        tbigFile, terr := os.Open(tempdir+"/autowebbackup.tar.gz")
+                        tbigFile, terr := os.Open(tempdir+transferfile)
                         if terr != nil {
                                 log.Printf("Open file error: %v", terr)
                         }
-                        terr = tclient.Store(dailydir+"/"+spart+"-"+tstr+".tar.gz", tbigFile)
+                        terr = tclient.Store(dailydir+"/"+spart+"-"+tstr+"."+transfersuffix, tbigFile)
                         if terr != nil {
                                 log.Printf("FTPS store error: %v", terr)
                         } else {
@@ -212,7 +233,7 @@ client.Close()
                         tbigFile.Close()
                 }
 
-		os.Remove(tempdir+"/autowebbackup.tar.gz")
+		os.Remove(tempdir+transferfile)
 	}
 
 }
@@ -239,17 +260,27 @@ func read_config() {
         log.SetOutput(ownlogger)
 
         dirs = viper.GetStringSlice("dirs")
-//        do_trace = viper.GetBool("do_trace")
+
+        do_trace = viper.GetBool("do_trace")
+
+	tarcmd = viper.GetString("tarcmd")
+
 	ftpsuser = viper.GetString("ftpsuser")
         ftpspassword = viper.GetString("ftpspassword")
         ftpshost = viper.GetString("ftpshost")
+
         dailydir = viper.GetString("dailydir")
         weeklydir = viper.GetString("weeklydir")
         monthlydir = viper.GetString("monthlydir")
         tempdir = viper.GetString("tempdir")
+
         dailykeep = viper.GetInt64("dailykeep")
         weeklykeep = viper.GetInt64("weeklykeep")
         monthlykeep = viper.GetInt64("monthlykeep")
+
+	do_encrypt = viper.GetBool("do_encrypt")
+	encryptsuffix = viper.GetString("encryptsuffix")
+	encryptpassw = viper.GetString("encryptpassw")
 
 	if do_trace {
 		log.Println("do_trace: ",do_trace)
@@ -306,3 +337,41 @@ func Walk(client *goftp.Client, root string, walkFn filepath.WalkFunc) (ret erro
     return ret
 }
 
+func encrypt() {
+    // read content from your file
+    plaintext, err := ioutil.ReadFile(tempdir + "/autowebbackup.tar.gz")
+    if err != nil {
+        panic(err.Error())
+    }
+
+    // this is a key
+    key := []byte(encryptpassw[0:32])
+
+    block, err := aes.NewCipher(key)
+    if err != nil {
+        panic(err)
+    }
+
+    // The IV needs to be unique, but not secure. Therefore it's common to
+    // include it at the beginning of the ciphertext.
+    ciphertext := make([]byte, aes.BlockSize+len(plaintext))
+    iv := ciphertext[:aes.BlockSize]
+    if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+        panic(err)
+    }
+
+    stream := cipher.NewCFBEncrypter(block, iv)
+    stream.XORKeyStream(ciphertext[aes.BlockSize:], plaintext)
+
+    // create a new file for saving the encrypted data.
+    f, err := os.Create(tempdir + "/autowebbackup." + encryptsuffix)
+    if err != nil {
+        panic(err.Error())
+    }
+    _, err = io.Copy(f, bytes.NewReader(ciphertext))
+    if err != nil {
+        panic(err.Error())
+    }
+    os.Remove(tempdir+"/autowebbackup.tar.gz")
+    log.Println("File successfully encrypted")
+}

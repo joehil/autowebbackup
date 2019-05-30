@@ -1,8 +1,11 @@
+# do a trace (get more output to log), true or false
+do_trace = false
+
 # file that you write your log to
 own_log = "/var/log/autowebbackup.log"
 
-# do a trace (get more output to log), true or false
-do_trace = false
+# location of tar command
+tarcmd = "/bin/tar"
 
 # list of directories you want to backup
 dirs = [
@@ -28,3 +31,9 @@ ftpsuser = "<ftpsuser>"
 ftpspassword = "<ftpspassw>"
 ftpshost = "<ftpshost>"
 
+# do you want to encrypt the backups
+do_encrypt = false
+# suffix of encrypted backups
+encryptsuffix = "encrypt"
+# passphrase to encrypt (at least 32 characters)
+encryptpaasw = "12345678901234567890123456789012"
