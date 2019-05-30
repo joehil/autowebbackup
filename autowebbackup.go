@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"fmt"
+	"io"
 	"time"
 	"strings"
     	"path"
@@ -43,6 +44,8 @@ var encryptpassw string
 
 var transferfile string = "/autowebbackup.tar.gz"
 var transfersuffix string = "tar.gz"
+
+var ownlogger io.Writer
 
 func main() {
 // Set location of config 
@@ -88,6 +91,12 @@ fstr := tstr[0:6] + "01"
 tunix := t.Unix()
 daynum := t.Day()
 
+var ftplogger io.Writer = nil
+
+if do_trace {
+	ftplogger = ownlogger
+}
+
 config := goftp.Config{
     User:               ftpsuser,
     Password:           ftpspassword,
@@ -95,7 +104,7 @@ config := goftp.Config{
     ActiveTransfers: false,
     DisableEPSV: true,
     Timeout:            100 * time.Second,
-    Logger:             os.Stderr,
+    Logger:             ftplogger,
     TLSConfig: &tls.Config{
 		InsecureSkipVerify: true,
 		Renegotiation: 2,
@@ -272,14 +281,14 @@ func read_config() {
                 log.Fatalf("Filename for ownlog unknown: %v", err)
         }
 // Open log file
-        ownlogger := &lumberjack.Logger{
+        ownlogger = &lumberjack.Logger{
                 Filename:   ownlog,
                 MaxSize:    5, // megabytes
                 MaxBackups: 3,
                 MaxAge:     28, //days
                 Compress:   true, // disabled by default
         }
-        defer ownlogger.Close()
+//        defer ownlogger.Close()
         log.SetOutput(ownlogger)
 
         dirs = viper.GetStringSlice("dirs")
