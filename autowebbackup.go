@@ -67,6 +67,10 @@ func main() {
                         fetch(os.Args[2])
 			os.Exit(0)
                 }
+                if a1 == "decrypt" {
+                        decrypt()
+                        os.Exit(0)
+                }		
 		fmt.Println("parameter invalid")
 		os.Exit(-1)
 	}
@@ -380,12 +384,12 @@ func encrypt() {
 }
 
 func decrypt() {
-    fileSrc, err := os.Open(tempdir+"/autowebbackup.tar.gz")
+    fileSrc, err := os.Open(tempdir+"/autowebbackup."+encryptsuffix)
     if err != nil {
         panic(err)
     }
     defer fileSrc.Close()
-    fileDst, err := os.Create(tempdir+"/autowebbackup."+encryptsuffix)
+    fileDst, err := os.Create(tempdir+"/autowebbackup.tar.gz")
     if err != nil {
         panic(err)
     }
@@ -394,12 +398,11 @@ func decrypt() {
     if err != nil {
         panic(err)
     }
-    err = aes.EncryptStream(fileSrc, fileDst)
+    err = aes.DecryptStream(fileSrc, fileDst)
     if err != nil {
         panic(err)
     }
-    os.Remove(tempdir+"/autowebbackup.tar.gz")
-    log.Println("File successfully decrypted")
+    fmt.Println("File successfully decrypted")
 }
 
 func myUsage() {
@@ -490,6 +493,18 @@ config := goftp.Config{
 client, err := goftp.DialConfig(config, ftpshost)
 if err != nil {
     panic(err)
+}
+
+bigFile, err := os.Create(tempdir+"/autowebbackup."+encryptsuffix)
+if err != nil {
+    panic(err)
+}
+
+err = client.Retrieve(filename, bigFile)
+if err != nil {
+    fmt.Printf("FTPS retrieve error: %v", err)
+} else {
+    fmt.Println("FTPS retrieved successfully")
 }
 
 client.Close()
