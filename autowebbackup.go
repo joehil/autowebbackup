@@ -5,9 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"fmt"
-	"bytes"
-	"io"
-	"io/ioutil"
 	"time"
 	"strings"
     	"path"
@@ -17,9 +14,6 @@ import (
 	"github.com/natefinch/lumberjack"
 	"github.com/secsy/goftp"
 	"crypto/tls"
-	"crypto/aes"
-	"crypto/rand"
-	"crypto/cipher"
 )
 
 var do_trace bool = true
@@ -58,6 +52,22 @@ func main() {
 // Read config
 	read_config()
 
+// Get commandline args
+	if len(os.Args) > 1 {
+        	a1 := os.Args[1]
+        	if a1 == "backup" {
+			backup()
+        	}
+		fmt.Println("parameter invalid")
+		os.Exit(-1)
+	}
+	if len(os.Args) == 1 {
+		myUsage()
+	}
+}
+
+
+func backup() {
 t := time.Now()
 tstr := t.Format("20060102")
 wd := t.Weekday()
@@ -338,40 +348,56 @@ func Walk(client *goftp.Client, root string, walkFn filepath.WalkFunc) (ret erro
 }
 
 func encrypt() {
-    // read content from your file
-    plaintext, err := ioutil.ReadFile(tempdir + "/autowebbackup.tar.gz")
-    if err != nil {
-        panic(err.Error())
-    }
-
-    // this is a key
-    key := []byte(encryptpassw[0:32])
-
-    block, err := aes.NewCipher(key)
+    fileSrc, err := os.Open(tempdir+"/autowebbackup.tar.gz")
     if err != nil {
         panic(err)
     }
-
-    // The IV needs to be unique, but not secure. Therefore it's common to
-    // include it at the beginning of the ciphertext.
-    ciphertext := make([]byte, aes.BlockSize+len(plaintext))
-    iv := ciphertext[:aes.BlockSize]
-    if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+    defer fileSrc.Close()
+    fileDst, err := os.Create(tempdir+"/autowebbackup."+encryptsuffix)
+    if err != nil {
         panic(err)
     }
-
-    stream := cipher.NewCFBEncrypter(block, iv)
-    stream.XORKeyStream(ciphertext[aes.BlockSize:], plaintext)
-
-    // create a new file for saving the encrypted data.
-    f, err := os.Create(tempdir + "/autowebbackup." + encryptsuffix)
+    defer fileDst.Close()
+    aes, err := NewAes(32, encryptpassw[0:31])
     if err != nil {
-        panic(err.Error())
+        panic(err)
     }
-    _, err = io.Copy(f, bytes.NewReader(ciphertext))
+    err = aes.EncryptStream(fileSrc, fileDst)
     if err != nil {
-        panic(err.Error())
+        panic(err)
     }
     os.Remove(tempdir+"/autowebbackup.tar.gz")
     log.Println("File successfully encrypted")
+}
+
+func decrypt() {
+    fileSrc, err := os.Open(tempdir+"/autowebbackup.tar.gz")
+    if err != nil {
+        panic(err)
+    }
+    defer fileSrc.Close()
+    fileDst, err := os.Create(tempdir+"/autowebbackup."+encryptsuffix)
+    if err != nil {
+        panic(err)
+    }
+    defer fileDst.Close()
+    aes, err := NewAes(32, encryptpassw[0:31])
+    if err != nil {
+        panic(err)
+    }
+    err = aes.EncryptStream(fileSrc, fileDst)
+    if err != nil {
+        panic(err)
+    }
+    os.Remove(tempdir+"/autowebbackup.tar.gz")
+    log.Println("File successfully decrypted")
+}
+
+func myUsage() {
+     fmt.Printf("Usage: %s argument\n", os.Args[0])
+     fmt.Println("Arguments:")
+     fmt.Println("backup        Backup the directories mentioned in the config file")
+     fmt.Println("list          List all backups")
+     fmt.Println("fetch         Fetch backup from server")
+     fmt.Println("decrypt       Decrypt backup")
 }
