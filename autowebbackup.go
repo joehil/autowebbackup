@@ -401,3 +401,69 @@ func myUsage() {
      fmt.Println("fetch         Fetch backup from server")
      fmt.Println("decrypt       Decrypt backup")
 }
+
+func list() {
+config := goftp.Config{
+    User:               ftpsuser,
+    Password:           ftpspassword,
+    ConnectionsPerHost: 10,
+    ActiveTransfers: false,
+    DisableEPSV: true,
+    Timeout:            100 * time.Second,
+    Logger:             os.Stderr,
+    TLSConfig: &tls.Config{
+		InsecureSkipVerify: true,
+		Renegotiation: 2,
+	},
+    TLSMode: 0,
+}
+
+client, err := goftp.DialConfig(config, ftpshost)
+if err != nil {
+    panic(err)
+}
+
+    Walk(client, dailydir, func(fullPath string, info os.FileInfo, err error) error {
+        if err != nil {
+            // no permissions is okay, keep walking
+            if err.(goftp.Error).Code() == 550 {
+                return nil
+            }
+            return err
+        }
+
+	fstat, err := client.Stat(fullPath)
+        fmt.Println(fstat.Name())
+        return nil
+    })
+
+    Walk(client, weeklydir, func(fullPath string, info os.FileInfo, err error) error {
+        if err != nil {
+            // no permissions is okay, keep walking
+            if err.(goftp.Error).Code() == 550 {
+                return nil
+            }
+            return err
+        }
+
+        fstat, err := client.Stat(fullPath)
+        fmt.Println(fstat.Name())
+        return nil
+    })
+
+    Walk(client, monthlydir, func(fullPath string, info os.FileInfo, err error) error {
+        if err != nil {
+            // no permissions is okay, keep walking
+            if err.(goftp.Error).Code() == 550 {
+                return nil
+            }
+            return err
+        }
+
+        fstat, err := client.Stat(fullPath)
+        fmt.Println(fstat.Name())
+        return nil
+    })
+
+client.Close()
+}
