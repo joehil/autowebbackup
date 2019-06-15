@@ -24,8 +24,30 @@ To use autowebbackup regularly, consider adding it to your crontab. It is best t
 
 After installation autowebbackup can perform various tasks:
 
+
 Backup directories configured in the configuration file
 
-In this case autowebbackup is started like this:
-
+```
 autowebbackup backup
+```
+
+Get a list of backups
+
+```
+autowebbackup list
+```
+
+Fetch a backup to the configured temporary directory
+
+```
+autowebbackup fetch <name of backup file>
+```
+
+Decrypt the fetched backup
+
+If your backup is encrypted, decrypt it this way:
+
+```
+autowebbackup decrypt
+```
+
