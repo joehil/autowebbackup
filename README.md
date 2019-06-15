@@ -21,3 +21,11 @@ This software was written in go (golang). To use it on your server, do the follo
 - run autowebbackup
 
 To use autowebbackup regularly, consider adding it to your crontab. It is best to run autowebbackup daily, best during the night.
+
+After installation autowebbackup can perform various tasks:
+
+Backup directories configured in the configuration file
+
+In this case autowebbackup is started like this:
+
+autowebbackup backup
