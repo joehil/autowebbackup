@@ -25,25 +25,29 @@ To use autowebbackup regularly, consider adding it to your crontab. It is best t
 After installation autowebbackup can perform various tasks:
 
 
-Backup directories configured in the configuration file
+## Backup directories configured in the configuration file
 
 ```
 autowebbackup backup
 ```
 
-Get a list of backups
+## Get a list of backups
 
 ```
 autowebbackup list
 ```
+This shows the full list of available backups. If you only want to see the list of backups containing the word "summer" you do it like this:
+```
+autowebbackup list | grep summer
+```
 
-Fetch a backup to the configured temporary directory
+## Fetch a backup to the configured temporary directory
 
 ```
 autowebbackup fetch <name of backup file>
 ```
 
-Decrypt the fetched backup
+## Decrypt the fetched backup
 
 If your backup is encrypted, decrypt it this way:
 
