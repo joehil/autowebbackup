@@ -36,4 +36,4 @@ do_encrypt = false
 # suffix of encrypted backups
 encryptsuffix = "encrypt"
 # passphrase to encrypt (at least 32 characters)
-encryptpaasw = "12345678901234567890123456789012"
+encryptpassw = "12345678901234567890123456789012"
