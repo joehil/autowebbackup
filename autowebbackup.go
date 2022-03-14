@@ -205,64 +205,80 @@ if do_encrypt {
                 sparts := strings.SplitAfter(s, "/")
                 spart := sparts[len(sparts)-1]
 
-
 		if daynum == 1 { 
-			client, err := goftp.DialConfig(config, ftpshost)
-			if err != nil {
- 	                       log.Printf("FTPS connect error: %v", err)
-			} else {
-				log.Println("FTPS connected successfully")
-			}
-			bigFile, err := os.Open(tempdir+transferfile)
-			if err != nil {
-                        	log.Printf("Open file error: %v", err)
-			}
-			err = client.Store(monthlydir+"/"+spart+"-"+tstr+"."+transfersuffix, bigFile)
-			if err != nil {
-        	                log.Printf("FTPS store error: %v", err)
-			} else {
-                	        log.Println("FTPS stored successfully")
-                	}
-                	client.Close()
-                	bigFile.Close()
+                        n := 1
+                        for n < 11 {
+				client, err := goftp.DialConfig(config, ftpshost)
+				if err != nil {
+ 	        	               log.Printf("FTPS connect error: %v", err)
+				} else {
+					log.Println("FTPS connected successfully")
+				}
+				bigFile, err := os.Open(tempdir+transferfile)
+				if err != nil {
+                        		log.Printf("Open file error: %v", err)
+				}
+				err = client.Store(monthlydir+"/"+spart+"-"+tstr+"."+transfersuffix, bigFile)
+				if err != nil {
+        	        	        log.Printf("FTPS store error: %v", err)
+				} else {
+        	        	        log.Println("FTPS stored successfully")
+                		}
+                		client.Close()
+                		bigFile.Close()
+                                time.Sleep(20 * time.Second)
+                                n++
+                        }
 		} else if wd.String() == "Sunday" {
-	                tclient, terr := goftp.DialConfig(config, ftpshost)
-        	        if terr != nil {
-                	        log.Printf("FTPS connect error: %v", terr)
- 	   	        } else {
-                	        log.Println("FTPS connected successfully")
-           	        }
-	                tbigFile, terr := os.Open(tempdir+transferfile)
-        	        if terr != nil {
-                	        log.Printf("Open file error: %v", terr)
-                	}
-                	terr = tclient.Store(weeklydir+"/"+spart+"-"+tstr+"."+transfersuffix, tbigFile)
-        	        if terr != nil {
-                	        log.Printf("FTPS store error: %v", terr)
-         	        } else {
-                	        log.Println("FTPS stored successfully")
-			}
-			tclient.Close()
-			tbigFile.Close()
+                        n := 1
+                        for n < 11 {
+		                tclient, terr := goftp.DialConfig(config, ftpshost)
+        		        if terr != nil {
+                		        log.Printf("FTPS connect error: %v", terr)
+ 	   	        	} else {
+                	        	log.Println("FTPS connected successfully")
+	           	        }
+		                tbigFile, terr := os.Open(tempdir+transferfile)
+        		        if terr != nil {
+                		        log.Printf("Open file error: %v", terr)
+	                	}
+        	        	terr = tclient.Store(weeklydir+"/"+spart+"-"+tstr+"."+transfersuffix, tbigFile)
+        		        if terr != nil {
+                		        log.Printf("FTPS store error: %v", terr)
+	         	        } else {
+        	        	        log.Println("FTPS stored successfully")
+				}
+				tclient.Close()
+				tbigFile.Close()
+                                time.Sleep(20 * time.Second)
+                                n++
+                        }
                 } else {
-                        tclient, terr := goftp.DialConfig(config, ftpshost)
-                        if terr != nil {
-                                log.Printf("FTPS connect error: %v", terr)
-                        } else {
-                                log.Println("FTPS connected successfully")
-                        }
-                        tbigFile, terr := os.Open(tempdir+transferfile)
-                        if terr != nil {
-                                log.Printf("Open file error: %v", terr)
-                        }
-                        terr = tclient.Store(dailydir+"/"+spart+"-"+tstr+"."+transfersuffix, tbigFile)
-                        if terr != nil {
-                                log.Printf("FTPS store error: %v", terr)
-                        } else {
-                                log.Println("FTPS stored successfully")
-                        }
-                        tclient.Close()
-                        tbigFile.Close()
+			n := 1
+			for n < 11 {
+				log.Printf("%d. try",n)
+	                        tclient, terr := goftp.DialConfig(config, ftpshost)
+        	                if terr != nil {
+                	                log.Printf("FTPS connect error: %v", terr)
+                        	} else {
+                                	log.Println("FTPS connected successfully")
+	                        }
+        	                tbigFile, terr := os.Open(tempdir+transferfile)
+                	        if terr != nil {
+                        	        log.Printf("Open file error: %v", terr)
+                        	}
+	                        terr = tclient.Store(dailydir+"/"+spart+"-"+tstr+"."+transfersuffix, tbigFile)
+        	                if terr != nil {
+                	                log.Printf("FTPS store error: %v", terr)
+                        	} else {
+                                	log.Println("FTPS stored successfully")
+					n = 100
+                        	}
+                        	tclient.Close()
+                        	tbigFile.Close()
+				time.Sleep(20 * time.Second)
+				n++
+			}
                 }
 
 		os.Remove(tempdir+transferfile)
