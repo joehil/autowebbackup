@@ -196,7 +196,8 @@ if do_encrypt {
 		log.Printf(s)
 		err := cmd.Run()
 		if err != nil {
-			log.Printf("Command finished with error: %v", err)
+                        log.Println(cmd.Path,cmd.Args)
+			log.Printf("Tarcmd finished with error: %v", err)
 		}
                 if do_encrypt {
                         encrypt()
