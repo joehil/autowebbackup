@@ -208,6 +208,7 @@ if do_encrypt {
 		if daynum == 1 { 
                         n := 1
                         for n < 11 {
+                                log.Printf("%d. try",n)
 				client, err := goftp.DialConfig(config, ftpshost)
 				if err != nil {
  	        	               log.Printf("FTPS connect error: %v", err)
@@ -223,6 +224,7 @@ if do_encrypt {
         	        	        log.Printf("FTPS store error: %v", err)
 				} else {
         	        	        log.Println("FTPS stored successfully")
+                                        n = 100
                 		}
                 		client.Close()
                 		bigFile.Close()
@@ -232,6 +234,7 @@ if do_encrypt {
 		} else if wd.String() == "Sunday" {
                         n := 1
                         for n < 11 {
+                                log.Printf("%d. try",n)
 		                tclient, terr := goftp.DialConfig(config, ftpshost)
         		        if terr != nil {
                 		        log.Printf("FTPS connect error: %v", terr)
@@ -247,6 +250,7 @@ if do_encrypt {
                 		        log.Printf("FTPS store error: %v", terr)
 	         	        } else {
         	        	        log.Println("FTPS stored successfully")
+                                        n = 100
 				}
 				tclient.Close()
 				tbigFile.Close()
