@@ -8,13 +8,14 @@ import (
 	"io"
 	"time"
 	"strings"
-    	"path"
-    	"path/filepath"
-    	"sync/atomic"
+//    	"path"
+//    	"path/filepath"
+//    	"sync/atomic"
 	"github.com/spf13/viper"
 	"github.com/natefinch/lumberjack"
-	"github.com/secsy/goftp"
-	"crypto/tls"
+//	"github.com/secsy/goftp"
+	"github.com/pkg/sftp"
+	"golang.org/x/crypto/ssh"
 )
 
 var do_trace bool = true
@@ -47,6 +48,8 @@ var transfersuffix string = "tar.gz"
 
 var ownlogger io.Writer
 
+var hostKey ssh.PublicKey
+
 func main() {
 // Set location of config 
 	viper.SetConfigName("autowebbackup") // name of config file (without extension)
@@ -73,7 +76,7 @@ func main() {
                 if a1 == "decrypt" {
                         decrypt()
                         os.Exit(0)
-                }		
+                }
 		fmt.Println("parameter invalid")
 		os.Exit(-1)
 	}
@@ -91,93 +94,77 @@ fstr := tstr[0:6] + "01"
 tunix := t.Unix()
 daynum := t.Day()
 
-var ftplogger io.Writer = nil
+buffer := make([]byte, 8192)
 
-if do_trace {
-	ftplogger = ownlogger
-}
+//var ftplogger io.Writer = nil
 
-config := goftp.Config{
-    User:               ftpsuser,
-    Password:           ftpspassword,
-    ConnectionsPerHost: 10,
-    ActiveTransfers: false,
-    DisableEPSV: true,
-    Timeout:            100 * time.Second,
-    Logger:             ftplogger,
-    TLSConfig: &tls.Config{
-		InsecureSkipVerify: true,
-		Renegotiation: 2,
+//if do_trace {
+//	ftplogger = ownlogger
+//}
+
+config := &ssh.ClientConfig{
+	User: ftpsuser,
+	Auth: []ssh.AuthMethod{
+		ssh.Password(ftpspassword),
 	},
-    TLSMode: 0,
+	HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 }
 
-client, err := goftp.DialConfig(config, ftpshost)
+fmt.Println("Backup started")
+
+conn, err := ssh.Dial("tcp", ftpshost+":22", config)
 if err != nil {
-    panic(err)
+	fmt.Println("Failed to dial: ", err)
+	log.Fatal("Failed to dial: ", err)
 }
 
-    Walk(client, dailydir, func(fullPath string, info os.FileInfo, err error) error {
-        if err != nil {
-            // no permissions is okay, keep walking
-            if err.(goftp.Error).Code() == 550 {
-                return nil
-            }
-            return err
-        }
+// open an SFTP session over an existing ssh connection.
+client, err := sftp.NewClient(conn)
+if err != nil {
+	fmt.Println(err)
+	log.Fatal(err)
+}
 
-	fstat, err := client.Stat(fullPath)
-        fmt.Println(fstat.Name(),fstat.ModTime().Unix())
-
-	if fstat.ModTime().Unix() < tunix - 86400 * dailykeep {
-		log.Println("Delete file ",fullPath)
-		client.Delete(fullPath)
+// walk a directory
+w := client.Walk(dailydir)
+for w.Step() {
+	if w.Err() != nil {
+		continue
 	}
-
-        return nil
-    })
-
-    Walk(client, weeklydir, func(fullPath string, info os.FileInfo, err error) error {
-        if err != nil {
-            // no permissions is okay, keep walking
-            if err.(goftp.Error).Code() == 550 {
-                return nil
-            }
-            return err
+	fmt.Println(w.Path())
+        if w.Stat().ModTime().Unix() < tunix - 86400 * dailykeep {
+                log.Println("Delete file ",w.Path())
+                client.Remove(w.Path())
         }
+}
 
-        fstat, err := client.Stat(fullPath)
-        fmt.Println(fstat.Name(),fstat.ModTime().Unix())
-
-        if fstat.ModTime().Unix() < tunix - 86400 * weeklykeep {
-		log.Println("Delete file ",fullPath)
-		client.Delete(fullPath)
+w = client.Walk(weeklydir)
+for w.Step() {
+        if w.Err() != nil {
+                continue
         }
-
-        return nil
-    })
-
-    Walk(client, monthlydir, func(fullPath string, info os.FileInfo, err error) error {
-        if err != nil {
-            // no permissions is okay, keep walking
-            if err.(goftp.Error).Code() == 550 {
-                return nil
-            }
-            return err
+        fmt.Println(w.Path())
+        if w.Stat().ModTime().Unix() < tunix - 86400 * dailykeep {
+                log.Println("Delete file ",w.Path())
+                client.Remove(w.Path())
         }
+}
 
-        fstat, err := client.Stat(fullPath)
-        fmt.Println(fstat.Name(),fstat.ModTime().Unix())
-
-        if fstat.ModTime().Unix() < tunix - 86400 * monthlykeep {
-		log.Println("Delete file ",fullPath)
-		client.Delete(fullPath)
+w = client.Walk(monthlydir)
+for w.Step() {
+        if w.Err() != nil {
+                continue
         }
-
-        return nil
-    })
+        fmt.Println(w.Path())
+        if w.Stat().ModTime().Unix() < tunix - 86400 * dailykeep {
+                log.Println("Delete file ",w.Path())
+                client.Remove(w.Path())
+        }
+}
 
 client.Close()
+conn.Close()
+
 
 if do_encrypt {
 	transferfile = "/autowebbackup." + encryptsuffix
@@ -206,89 +193,82 @@ if do_encrypt {
                 sparts := strings.SplitAfter(s, "/")
                 spart := sparts[len(sparts)-1]
 
+		conn, err := ssh.Dial("tcp", ftpshost+":22", config)
+		if err != nil {
+        		fmt.Println("Failed to dial: ", err)
+        		log.Fatal("Failed to dial: ", err)
+		}
+
+		// open an SFTP session over an existing ssh connection.
+		client, err := sftp.NewClient(conn)
+		if err != nil {
+        		fmt.Println(err)
+        		log.Fatal(err)
+		}
+
 		if daynum == 1 { 
-                        n := 1
-                        for n < 11 {
-                                log.Printf("%d. try",n)
-				client, err := goftp.DialConfig(config, ftpshost)
-				if err != nil {
- 	        	               log.Printf("FTPS connect error: %v", err)
-				} else {
-					log.Println("FTPS connected successfully")
-				}
+				fmt.Println("Open:", tempdir+transferfile)
 				bigFile, err := os.Open(tempdir+transferfile)
 				if err != nil {
-                        		log.Printf("Open file error: %v", err)
+                        		fmt.Printf("Open file error: %v", err)
 				}
-				err = client.Store(monthlydir+"/"+spart+"-"+tstr+"."+transfersuffix, bigFile)
+				inFile, err := client.Create(monthlydir+"/"+spart+"-"+tstr+"."+transfersuffix)
 				if err != nil {
-        	        	        log.Printf("FTPS store error: %v", err)
-				} else {
-        	        	        log.Println("FTPS stored successfully")
-                                        n = 100
-                		}
-                		client.Close()
-                		bigFile.Close()
-                                time.Sleep(20 * time.Second)
-                                n++
-                        }
-		} else if wd.String() == "Sunday" {
-                        n := 1
-                        for n < 11 {
-                                log.Printf("%d. try",n)
-		                tclient, terr := goftp.DialConfig(config, ftpshost)
-        		        if terr != nil {
-                		        log.Printf("FTPS connect error: %v", terr)
- 	   	        	} else {
-                	        	log.Println("FTPS connected successfully")
-	           	        }
-		                tbigFile, terr := os.Open(tempdir+transferfile)
-        		        if terr != nil {
-                		        log.Printf("Open file error: %v", terr)
-	                	}
-        	        	terr = tclient.Store(weeklydir+"/"+spart+"-"+tstr+"."+transfersuffix, tbigFile)
-        		        if terr != nil {
-                		        log.Printf("FTPS store error: %v", terr)
-	         	        } else {
-        	        	        log.Println("FTPS stored successfully")
-                                        n = 100
+        	        	        fmt.Printf("SFTP create error: %v", err)
 				}
-				tclient.Close()
-				tbigFile.Close()
-                                time.Sleep(20 * time.Second)
-                                n++
-                        }
+
+				_, err = io.CopyBuffer(inFile, bigFile, buffer)
+				if err != nil {
+					fmt.Errorf("failed to copy file: %w", err)
+				}
+
+				inFile.Close()
+				bigFile.Close()
+                                time.Sleep(10 * time.Second)
+		} else if wd.String() == "Sunday" {
+                                fmt.Println("Open:", tempdir+transferfile)
+                                bigFile, err := os.Open(tempdir+transferfile)
+                                if err != nil {
+                                        fmt.Printf("Open file error: %v", err)
+                                }
+                                inFile, err := client.Create(weeklydir+"/"+spart+"-"+tstr+"."+transfersuffix)
+                                if err != nil {
+                                        fmt.Printf("SFTP create error: %v", err)
+                                }
+
+                                _, err = io.CopyBuffer(inFile, bigFile, buffer)
+                                if err != nil {
+                                        fmt.Errorf("failed to copy file: %w", err)
+                                }
+
+                                inFile.Close()
+                                bigFile.Close()
+                                time.Sleep(10 * time.Second)
                 } else {
-			n := 1
-			for n < 11 {
-				log.Printf("%d. try",n)
-	                        tclient, terr := goftp.DialConfig(config, ftpshost)
-        	                if terr != nil {
-                	                log.Printf("FTPS connect error: %v", terr)
-                        	} else {
-                                	log.Println("FTPS connected successfully")
-	                        }
-        	                tbigFile, terr := os.Open(tempdir+transferfile)
-                	        if terr != nil {
-                        	        log.Printf("Open file error: %v", terr)
-                        	}
-	                        terr = tclient.Store(dailydir+"/"+spart+"-"+tstr+"."+transfersuffix, tbigFile)
-        	                if terr != nil {
-                	                log.Printf("FTPS store error: %v", terr)
-                        	} else {
-                                	log.Println("FTPS stored successfully")
-					n = 100
-                        	}
-                        	tclient.Close()
-                        	tbigFile.Close()
-				time.Sleep(20 * time.Second)
-				n++
-			}
+                                fmt.Println("Open:", tempdir+transferfile)
+                                bigFile, err := os.Open(tempdir+transferfile)
+                                if err != nil {
+                                        fmt.Printf("Open file error: %v", err)
+                                }
+                                inFile, err := client.Create(dailydir+"/"+spart+"-"+tstr+"."+transfersuffix)
+                                if err != nil {
+                                        fmt.Printf("SFTP create error: %v", err)
+                                }
+
+                                _, err = io.CopyBuffer(inFile, bigFile, buffer)
+                                if err != nil {
+                                        fmt.Errorf("failed to copy file: %w", err)
+                                }
+
+                                inFile.Close()
+                                bigFile.Close()
+                                time.Sleep(10 * time.Second)
                 }
 
 		os.Remove(tempdir+transferfile)
+		client.Close()
+		conn.Close()
 	}
-
 }
 
 func read_config() {
@@ -342,52 +322,6 @@ func read_config() {
 			log.Printf("Index: %d, Value: %v\n", i, v )
 		}
 	}
-}
-
-// Walk a FTP file tree in parallel with prunability and error handling.
-// See http://golang.org/pkg/path/filepath/#Walk for interface details.
-func Walk(client *goftp.Client, root string, walkFn filepath.WalkFunc) (ret error) {
-    dirsToCheck := make(chan string, 100)
-
-    var workCount int32 = 1
-    dirsToCheck <- root
-
-    for dir := range dirsToCheck {
-        go func(dir string) {
-            files, err := client.ReadDir(dir)
-
-            if err != nil {
-                if err = walkFn(dir, nil, err); err != nil && err != filepath.SkipDir {
-                    ret = err
-                    close(dirsToCheck)
-                    return
-                }
-            }
-
-            for _, file := range files {
-                if err = walkFn(path.Join(dir, file.Name()), file, nil); err != nil {
-                    if file.IsDir() && err == filepath.SkipDir {
-                        continue
-                    }
-                    ret = err
-                    close(dirsToCheck)
-                    return
-                }
-
-                if file.IsDir() {
-                    atomic.AddInt32(&workCount, 1)
-                    dirsToCheck <- path.Join(dir, file.Name())
-                }
-            }
-
-            atomic.AddInt32(&workCount, -1)
-            if workCount == 0 {
-                close(dirsToCheck)
-            }
-        }(dir)
-    }
-
-    return ret
 }
 
 func encrypt() {
@@ -445,84 +379,75 @@ func myUsage() {
 }
 
 func list() {
-config := goftp.Config{
-    User:               ftpsuser,
-    Password:           ftpspassword,
-    ConnectionsPerHost: 10,
-    ActiveTransfers: false,
-    DisableEPSV: true,
-    Timeout:            100 * time.Second,
-    Logger:             nil,
-    TLSConfig: &tls.Config{
-		InsecureSkipVerify: true,
-		Renegotiation: 2,
-	},
-    TLSMode: 0,
+config := &ssh.ClientConfig{
+        User: ftpsuser,
+        Auth: []ssh.AuthMethod{
+                ssh.Password(ftpspassword),
+        },
+        HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 }
-
-client, err := goftp.DialConfig(config, ftpshost)
+conn, err := ssh.Dial("tcp", ftpshost+":22", config)
 if err != nil {
-    panic(err)
+        fmt.Println("Failed to dial: ", err)
+        log.Fatal("Failed to dial: ", err)
 }
 
-    Walk(client, dailydir, func(fullPath string, info os.FileInfo, err error) error {
-        if err != nil {
-            // no permissions is okay, keep walking
-            if err.(goftp.Error).Code() == 550 {
-                return nil
-            }
-            return err
-        }
-        fmt.Println(fullPath)
-        return nil
-    })
+// open an SFTP session over an existing ssh connection.
+client, err := sftp.NewClient(conn)
+if err != nil {
+        fmt.Println(err)
+        log.Fatal(err)
+}
 
-    Walk(client, weeklydir, func(fullPath string, info os.FileInfo, err error) error {
-        if err != nil {
-            // no permissions is okay, keep walking
-            if err.(goftp.Error).Code() == 550 {
-                return nil
-            }
-            return err
+// walk a directory
+w := client.Walk(dailydir)
+for w.Step() {
+        if w.Err() != nil {
+                continue
         }
-        fmt.Println(fullPath)
-        return nil
-    })
+        fmt.Println(w.Path())
+}
 
-    Walk(client, monthlydir, func(fullPath string, info os.FileInfo, err error) error {
-        if err != nil {
-            // no permissions is okay, keep walking
-            if err.(goftp.Error).Code() == 550 {
-                return nil
-            }
-            return err
+w = client.Walk(weeklydir)
+for w.Step() {
+        if w.Err() != nil {
+                continue
         }
-        fmt.Println(fullPath)
-        return nil
-    })
+        fmt.Println(w.Path())
+}
 
+w = client.Walk(monthlydir)
+for w.Step() {
+        if w.Err() != nil {
+                continue
+        }
+        fmt.Println(w.Path())
+}
 client.Close()
+conn.Close()
 }
 
 func fetch(filename string) {
-config := goftp.Config{
-    User:               ftpsuser,
-    Password:           ftpspassword,
-    ConnectionsPerHost: 10,
-    ActiveTransfers: false,
-    DisableEPSV: true,
-    Timeout:            100 * time.Second,
-    Logger:             nil,
-    TLSConfig: &tls.Config{
-		InsecureSkipVerify: true,
-		Renegotiation: 2,
-	},
-    TLSMode: 0,
+buffer := make([]byte, 8192)
+
+config := &ssh.ClientConfig{
+        User: ftpsuser,
+        Auth: []ssh.AuthMethod{
+                ssh.Password(ftpspassword),
+        },
+        HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+}
+conn, err := ssh.Dial("tcp", ftpshost+":22", config)
+if err != nil {
+        fmt.Println("Failed to dial: ", err)
+        log.Fatal("Failed to dial: ", err)
 }
 
-client, err := goftp.DialConfig(config, ftpshost)
+// open an SFTP session over an existing ssh connection.
+client, err := sftp.NewClient(conn)
 if err != nil {
-    panic(err)
+        fmt.Println(err)
+        log.Fatal(err)
 }
 
 bigFile, err := os.Create(tempdir+"/autowebbackup."+encryptsuffix)
@@ -530,12 +455,18 @@ if err != nil {
     panic(err)
 }
 
-err = client.Retrieve(filename, bigFile)
+inFile, err := client.Open(filename)
 if err != nil {
-    fmt.Printf("FTPS retrieve error: %v", err)
-} else {
-    fmt.Println("FTPS retrieved successfully")
+	fmt.Printf("SFTP open error: %v", err)
 }
 
+_, err = io.CopyBuffer(bigFile, inFile, buffer)
+if err != nil {
+	fmt.Errorf("failed to copy file: %w", err)
+}
+
+inFile.Close()
+bigFile.Close()
 client.Close()
+conn.Close()
 }
