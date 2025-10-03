@@ -8,12 +8,8 @@ import (
 	"io"
 	"time"
 	"strings"
-//    	"path"
-//    	"path/filepath"
-//    	"sync/atomic"
 	"github.com/spf13/viper"
 	"github.com/natefinch/lumberjack"
-//	"github.com/secsy/goftp"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
@@ -175,7 +171,7 @@ if do_encrypt {
 	for i, s := range dirs {
 		var cmd *exec.Cmd
     		fmt.Println(i, s)
-                if daynum == 1 {
+                if daynum == 1 || os.Args[2] == "full" {
 			cmd = exec.Command(tarcmd, "-czf", tempdir+"/autowebbackup.tar.gz", s)
 		} else {
                         cmd = exec.Command(tarcmd, "-cz", "--newer", fstr, "-f", tempdir+"/autowebbackup.tar.gz", s)
