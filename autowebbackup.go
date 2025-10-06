@@ -170,8 +170,14 @@ if do_encrypt {
 // Loop over directories
 	for i, s := range dirs {
 		var cmd *exec.Cmd
+		var parm string
     		fmt.Println(i, s)
-                if daynum == 1 || os.Args[2] == "full" {
+		if len(os.Args) > 2 {
+			parm = os.Args[2]
+		} else {
+			parm = os.Args[1]
+		}
+                if daynum == 1 || parm == "full" {
 			cmd = exec.Command(tarcmd, "-czf", tempdir+"/autowebbackup.tar.gz", s)
 		} else {
                         cmd = exec.Command(tarcmd, "-cz", "--newer", fstr, "-f", tempdir+"/autowebbackup.tar.gz", s)
