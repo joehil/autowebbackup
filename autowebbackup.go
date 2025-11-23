@@ -140,7 +140,7 @@ for w.Step() {
                 continue
         }
         fmt.Println(w.Path())
-        if w.Stat().ModTime().Unix() < tunix - 86400 * dailykeep {
+        if w.Stat().ModTime().Unix() < tunix - 86400 * weeklykeep {
                 log.Println("Delete file ",w.Path())
                 client.Remove(w.Path())
         }
@@ -152,7 +152,7 @@ for w.Step() {
                 continue
         }
         fmt.Println(w.Path())
-        if w.Stat().ModTime().Unix() < tunix - 86400 * dailykeep {
+        if w.Stat().ModTime().Unix() < tunix - 86400 * monthlykeep {
                 log.Println("Delete file ",w.Path())
                 client.Remove(w.Path())
         }
